@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "deploy": "gh-pages -d dist",
     "start": "next start",
     "lint": "eslint"
   },
