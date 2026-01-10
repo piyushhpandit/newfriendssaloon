@@ -1,26 +1,81 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* ===== Design tokens (single source of truth) =====
+     Store as "r g b" so we can use: rgb(var(--token)) */
+  /* Keep the "black backdrop + white cards" layout consistently (matches the earlier look). */
+  --bg: 10 10 10; /* app background */
+  --card: 255 255 255; /* surfaces */
+  --text: 24 24 27; /* primary text */
+  --muted: 82 82 91; /* secondary text */
+  --placeholder: 161 161 170;
+  --border: 228 228 231;
+
+  --primary: 24 24 27;
+  --primary-foreground: 255 255 255;
+
+  --danger: 220 38 38;
+  --danger-bg: 254 242 242;
+
+  --warning: 146 64 14;
+  --warning-bg: 255 251 235;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
+  --color-background: rgb(var(--bg));
+  --color-foreground: rgb(var(--text));
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
+/* Intentionally no auto dark-mode swap: we want predictable contrast on low-end phones. */
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  /* Let Tailwind classes control background/text colors (prevents white-on-white in dark mode). */
+  font-family: var(--font-sans), system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+  background: rgb(var(--bg));
+  color: rgb(var(--text));
+}
+
+/* Better tap behavior on low-end Android */
+button, a, input, label {
+  -webkit-tap-highlight-color: transparent;
+}
+
+@layer components {
+  .card {
+    @apply rounded-2xl bg-[rgb(var(--card))] p-4 shadow-sm ring-1 ring-[rgb(var(--border))];
+  }
+
+  .panel {
+    @apply rounded-xl bg-[rgb(var(--bg))] p-3 text-sm;
+  }
+
+  .label {
+    @apply text-sm font-medium text-[rgb(var(--muted))];
+  }
+
+  .input {
+    @apply w-full rounded-xl border border-[rgb(var(--border))] bg-[rgb(var(--card))] px-3 py-3 text-base text-[rgb(var(--text))] outline-none focus:border-[rgb(var(--primary))];
+  }
+
+  .input::placeholder {
+    color: rgb(var(--placeholder));
+  }
+
+  .btn-primary {
+    @apply w-full rounded-2xl bg-[rgb(var(--primary))] px-4 py-4 text-base font-semibold text-[rgb(var(--primary-foreground))] disabled:opacity-60;
+  }
+
+  .btn-secondary {
+    @apply rounded-xl border border-[rgb(var(--border))] bg-[rgb(var(--card))] px-3 py-2 text-sm font-semibold text-[rgb(var(--text))];
+  }
+
+  .alert-warning {
+    @apply rounded-2xl border border-[rgb(var(--warning))]/30 bg-[rgb(var(--warning-bg))] p-4 text-sm text-[rgb(var(--warning))];
+  }
+
+  .alert-danger {
+    @apply rounded-xl border border-[rgb(var(--danger))]/30 bg-[rgb(var(--danger-bg))] px-3 py-2 text-sm text-[rgb(var(--danger))];
+  }
 }
