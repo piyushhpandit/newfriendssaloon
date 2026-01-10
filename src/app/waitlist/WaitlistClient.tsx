@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import { supabaseBrowser } from "@/lib/supabase/browser";
 import { SHOP } from "@/lib/shop";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { Toast } from "@/components/ui/Toast";
+import { useRouter } from "next/navigation";
 
 type WaitlistDetails = {
   waitlist_id: string;
@@ -28,6 +30,7 @@ function formatDateTime(iso: string): string {
 export function WaitlistClient(props: { waitlistId: string | null; token: string | null }) {
   const { waitlistId, token } = props;
   const supabase = useMemo(() => supabaseBrowser(), []);
+  const router = useRouter();
   const [data, setData] = useState<WaitlistDetails | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -63,20 +66,11 @@ export function WaitlistClient(props: { waitlistId: string | null; token: string
   useEffect(() => {
     const sb = supabase as SupabaseClient | null;
     if (!sb) return;
-    let alive = true;
-    async function loop() {
-      await loadOnce();
-      if (!alive) return;
-      const t = setInterval(() => {
-        loadOnce();
-      }, 5000);
-      return () => clearInterval(t);
-    }
-    const cleanupPromise = loop();
-    return () => {
-      alive = false;
-      void cleanupPromise;
-    };
+    void loadOnce();
+    const t = window.setInterval(() => {
+      void loadOnce();
+    }, 5000);
+    return () => window.clearInterval(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [waitlistId, token, supabase]);
 
@@ -97,7 +91,7 @@ export function WaitlistClient(props: { waitlistId: string | null; token: string
     }
     const row = (res.data?.[0] ?? null) as { booking_id: string } | null;
     if (row?.booking_id) {
-      window.location.href = `/confirm?booking=${row.booking_id}&token=${token}`;
+      router.push(`/confirm?booking=${row.booking_id}&token=${token}`);
       return;
     }
     setConfirming(false);
@@ -115,9 +109,7 @@ export function WaitlistClient(props: { waitlistId: string | null; token: string
 
         <section className="card mt-4">
           {loading ? <div className="text-sm text-[rgb(var(--muted))]">Loading…</div> : null}
-          {error ? (
-            <div className="alert-danger">{error}</div>
-          ) : null}
+          <Toast message={error} onClose={() => setError(null)} />
 
           {data ? (
             <div className="space-y-3">

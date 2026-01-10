@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useSearchParams } from "next/navigation";
 import { SHOP } from "@/lib/shop";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { Toast } from "@/components/ui/Toast";
 
 type BookingRow = {
   id: string;
@@ -310,11 +311,21 @@ function BarberDashboardInner() {
     setError(null);
     const sb = supabase as SupabaseClient | null;
     if (!sb) return;
-    const res = await sb.from("bookings").update({ status }).eq("id", id);
+    const res = await sb.from("bookings").update({ status }).eq("id", id).select("start_time").maybeSingle();
     if (res.error) {
       setError(res.error.message);
       return;
     }
+
+    // If a future booking is cancelled/no-show, try to promote the waitlist automatically for that slot.
+    // (The RPC is idempotent and will no-op if slot isn't free or nobody is waiting.)
+    if ((status === "CANCELLED" || status === "NO_SHOW") && res.data?.start_time) {
+      const startMs = new Date(res.data.start_time).getTime();
+      if (Number.isFinite(startMs) && startMs > Date.now()) {
+        await sb.rpc("promote_waitlist_for_slot", { p_slot_start_time: res.data.start_time });
+      }
+    }
+
     const ok = await ensureSession();
     if (ok) await loadBookings(ok);
   }
@@ -656,9 +667,7 @@ function BarberDashboardInner() {
         </header>
 
         <section className="card mt-4">
-          {error ? (
-            <div className="alert-danger mb-3">{error}</div>
-          ) : null}
+          <Toast message={error} onClose={() => setError(null)} />
 
           {loading ? <div className="text-sm text-[rgb(var(--muted))]">Loading…</div> : null}
 
@@ -692,17 +701,17 @@ function BarberDashboardInner() {
 
                 {bookingMode === "today" ? (
                   <label className="block">
-                    <div className="label">Date</div>
+                    <div className="text-white">Date</div>
                     <input className="input mt-1" type="date" value={bookingDate} onChange={(e) => setBookingDate(e.target.value)} />
                   </label>
                 ) : (
                   <div className="grid grid-cols-2 gap-2">
                     <label className="block">
-                      <div className="label">From</div>
+                      <div className="text-white">From</div>
                       <input className="input mt-1" type="date" value={rangeStart} onChange={(e) => setRangeStart(e.target.value)} />
                     </label>
                     <label className="block">
-                      <div className="label">To</div>
+                      <div className="text-white">To</div>
                       <input className="input mt-1" type="date" value={rangeEnd} onChange={(e) => setRangeEnd(e.target.value)} />
                     </label>
                   </div>
@@ -710,7 +719,7 @@ function BarberDashboardInner() {
 
                 <div className="grid grid-cols-2 gap-2">
                   <label className="block">
-                    <div className="label">Status</div>
+                    <div className="text-white">Status</div>
                     <select className="input mt-1" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
                       <option value="ALL">All</option>
                       <option value="BOOKED">BOOKED</option>
@@ -724,7 +733,7 @@ function BarberDashboardInner() {
                     </select>
                   </label>
                   <label className="block">
-                    <div className="label">Search (name/phone)</div>
+                    <div className="text-white">Search (name/phone)</div>
                     <input className="input mt-1" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="e.g. Rahul / 98..." />
                   </label>
                 </div>
@@ -806,11 +815,11 @@ function BarberDashboardInner() {
             <div className="space-y-4">
               <div className="panel space-y-3">
                 <label className="block">
-                  <div className="label">Date</div>
+                  <div className="text-white">Date</div>
                   <input className="input mt-1" type="date" value={queueDate} onChange={(e) => setQueueDate(e.target.value)} />
                 </label>
 
-                <label className="flex items-center gap-2 text-sm">
+                <label className=" text-white flex items-center gap-2 text-sm">
                   <input type="checkbox" checked={queueOnlyActive} onChange={(e) => setQueueOnlyActive(e.target.checked)} />
                   Show only active (WAITING / PROMOTED)
                 </label>
@@ -918,7 +927,7 @@ function BarberDashboardInner() {
           {tab === "slots" ? (
             <div className="space-y-4">
               <div className="panel space-y-3">
-                <div className="text-sm font-semibold">Quick actions</div>
+                <div className="text-sm text-white font-semibold">Quick actions</div>
                 <div className="grid grid-cols-2 gap-2">
                   <button
                     type="button"
@@ -1175,14 +1184,14 @@ function BarberDashboardInner() {
           {tab === "services" ? (
             <div className="space-y-4">
               <div className="panel space-y-3">
-                <div className="text-sm font-semibold">Add service</div>
+                <div className="text-sm text-white font-semibold">Add service</div>
                 <label className="block">
-                  <div className="label">Name</div>
+                  <div className="text-white">Name</div>
                   <input className="input mt-1" value={newService.name} onChange={(e) => setNewService((p) => ({ ...p, name: e.target.value }))} />
                 </label>
                 <div className="grid grid-cols-2 gap-2">
                   <label className="block">
-                    <div className="label">Price (₹)</div>
+                    <div className="text-white">Price (₹)</div>
                     <input
                       className="input mt-1"
                       inputMode="numeric"
@@ -1191,7 +1200,7 @@ function BarberDashboardInner() {
                     />
                   </label>
                   <label className="block">
-                    <div className="label">Duration (min)</div>
+                    <div className="text-white">Duration (min)</div>
                     <input
                       className="input mt-1"
                       inputMode="numeric"

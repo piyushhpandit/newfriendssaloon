@@ -405,6 +405,12 @@ declare
   v_token uuid;
 begin
   perform public.maintenance_tick();
+  if p_start_time < now() then
+    raise exception 'Cannot book a slot in the past';
+  end if;
+  if p_start_time > (now() + interval '7 days') then
+    raise exception 'Cannot book more than 7 days in advance';
+  end if;
 
   if p_customer_name is null or length(trim(p_customer_name)) = 0 then
     raise exception 'Customer name is required';
@@ -612,6 +618,12 @@ declare
   v_token uuid;
 begin
   perform public.maintenance_tick();
+  if p_slot_start_time < now() then
+    raise exception 'Cannot join a waitlist for a past slot';
+  end if;
+  if p_slot_start_time > (now() + interval '7 days') then
+    raise exception 'Cannot join a waitlist more than 7 days in advance';
+  end if;
 
   if p_customer_name is null or length(trim(p_customer_name)) = 0 then
     raise exception 'Customer name is required';

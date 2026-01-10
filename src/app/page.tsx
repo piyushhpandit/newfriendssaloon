@@ -7,6 +7,7 @@ import type { AvailabilityRule, Interval, Slot } from "@/lib/slots";
 import { generateSlots } from "@/lib/slots";
 import { useRouter } from "next/navigation";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { Toast } from "@/components/ui/Toast";
 
 type Service = {
   id: string;
@@ -27,9 +28,34 @@ function endOfDayLocal(d: Date): Date {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59, 999);
 }
 
+function parseTimeToDate(day: Date, time: string): Date {
+  const [hh, mm] = time.split(":").map((v) => Number(v));
+  return new Date(day.getFullYear(), day.getMonth(), day.getDate(), hh, mm || 0, 0, 0);
+}
+
+function toDateInputValue(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function addDaysLocal(d: Date, days: number): Date {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate() + days, d.getHours(), d.getMinutes(), d.getSeconds(), d.getMilliseconds());
+}
+
+function fromDateInputValue(v: string): Date | null {
+  // v = YYYY-MM-DD
+  const [yy, mm, dd] = v.split("-").map((x) => Number(x));
+  if (!yy || !mm || !dd) return null;
+  return new Date(yy, mm - 1, dd, 0, 0, 0, 0);
+}
+
 export default function BookingPage() {
   const router = useRouter();
   const supabase = useMemo(() => supabaseBrowser(), []);
+
+  const [selectedDate, setSelectedDate] = useState<Date>(() => startOfDayLocal(new Date()));
 
   const [services, setServices] = useState<Service[]>([]);
   const [selected, setSelected] = useState<Record<string, boolean>>({});
@@ -44,10 +70,28 @@ export default function BookingPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const [openStep, setOpenStep] = useState<"services" | "slots" | "details">("services");
+
   const selectedServices = useMemo(
     () => services.filter((s) => selected[s.id]),
     [services, selected],
   );
+
+  const servicesComplete = selectedServices.length > 0;
+  const slotsComplete = !!selectedSlot;
+
+  useEffect(() => {
+    if (!servicesComplete && openStep !== "services") setOpenStep("services");
+  }, [servicesComplete, openStep]);
+
+  useEffect(() => {
+    if (openStep === "services" && servicesComplete) setOpenStep("slots");
+  }, [openStep, servicesComplete]);
+
+  useEffect(() => {
+    if (openStep === "details" && servicesComplete && !slotsComplete) setOpenStep("slots");
+    if (openStep === "slots" && servicesComplete && slotsComplete) setOpenStep("details");
+  }, [openStep, servicesComplete, slotsComplete]);
 
   const totals = useMemo(() => {
     const totalDuration = selectedServices.reduce((acc, s) => acc + s.duration_minutes, 0);
@@ -64,10 +108,10 @@ export default function BookingPage() {
       setError(null);
       setSelectedSlot(null);
 
-      const today = new Date();
-      const dayOfWeek = today.getDay(); // 0..6
-      const dayStart = startOfDayLocal(today);
-      const dayEnd = endOfDayLocal(today);
+      const day = selectedDate;
+      const dayOfWeek = day.getDay(); // 0..6
+      const dayStart = startOfDayLocal(day);
+      const dayEnd = endOfDayLocal(day);
 
       // Minimal "maintenance" call to expire bookings / promotions opportunistically.
       await client.rpc("maintenance_tick");
@@ -101,6 +145,23 @@ export default function BookingPage() {
       setServices(svc);
 
       const rule = (ruleRes.data ?? null) as AvailabilityRule | null;
+
+      // If it's already past today's shop closing time, jump to tomorrow automatically.
+      // This avoids showing an empty "today" grid after hours.
+      const todayStart = startOfDayLocal(new Date());
+      if (dayStart.getTime() === todayStart.getTime() && rule && !rule.is_day_off) {
+        const shopEnd = parseTimeToDate(day, rule.work_end);
+        if (Date.now() > shopEnd.getTime()) {
+          const tomorrow = startOfDayLocal(addDaysLocal(new Date(), 1));
+          const maxD = startOfDayLocal(addDaysLocal(new Date(), 7));
+          if (tomorrow.getTime() <= maxD.getTime()) {
+            setSelectedDate(tomorrow);
+            setLoading(false);
+            return;
+          }
+        }
+      }
+
       const blocked: Interval[] = (blockedRes.data ?? []).map((b) => ({
         start: new Date(b.start_time),
         end: new Date(b.end_time),
@@ -112,28 +173,36 @@ export default function BookingPage() {
 
       const durationMinutes = totals.totalDuration > 0 ? totals.totalDuration : 30;
       const gen = generateSlots({
-        day: today,
+        day,
         rule,
         blocked,
         busy,
         durationMinutes,
       });
 
-      setSlots(gen.slots);
-      setNextAvailable(gen.nextAvailable);
+      // Prevent booking in the past (client-side). Also makes "Next" skip earlier times.
+      // Small lead helps avoid edge cases around minute boundaries / latency.
+      const minStartMs = startOfDayLocal(day).getTime() === startOfDayLocal(new Date()).getTime() ? Date.now() + 60_000 : -Infinity;
+      const slotsNoPast = gen.slots.map((s) => (s.start.getTime() < minStartMs ? { ...s, state: "BLOCKED" as const } : s));
+      setSlots(slotsNoPast);
+      setNextAvailable(slotsNoPast.find((s) => s.state === "AVAILABLE") ?? null);
       setLoading(false);
     }
     load(sb);
     return () => {
       alive = false;
     };
-  }, [supabase, totals.totalDuration]);
+  }, [supabase, totals.totalDuration, selectedDate]);
 
   async function book() {
     setError(null);
     const sb = supabase as SupabaseClient | null;
     if (!sb) return setError("App is not ready. Please refresh.");
     if (!selectedSlot) return setError("Select a time slot.");
+    if (selectedSlot.start.getTime() < Date.now() + 60_000) return setError("You can’t book a slot in the past.");
+    if (selectedSlot.start.getTime() > Date.now() + 7 * 24 * 60 * 60_000) {
+      return setError("You can only book up to 7 days in advance.");
+    }
     if (!name.trim()) return setError("Enter your name.");
     if (!phone.trim()) return setError("Enter your phone number.");
     if (selectedServices.length === 0) return setError("Select at least one service.");
@@ -172,6 +241,10 @@ export default function BookingPage() {
     setError(null);
     const sb = supabase as SupabaseClient | null;
     if (!sb) return setError("App is not ready. Please refresh.");
+    if (slotStart.getTime() < Date.now() + 60_000) return setError("You can’t join a waitlist for a past slot.");
+    if (slotStart.getTime() > Date.now() + 7 * 24 * 60 * 60_000) {
+      return setError("You can only join waitlist up to 7 days in advance.");
+    }
     if (!name.trim()) return setError("Enter your name.");
     if (!phone.trim()) return setError("Enter your phone number.");
     if (selectedServices.length === 0) return setError("Select at least one service.");
@@ -218,159 +291,243 @@ export default function BookingPage() {
           </div>
         </header>
 
+        {/* Step 1: Services */}
         <section className="card mt-4">
-          <h2 className="text-base font-semibold">Services</h2>
-          <div className="mt-3 space-y-2">
-            {services.map((s) => (
-              <label
-                key={s.id}
-                className="flex items-start gap-3 rounded-xl border border-[rgb(var(--border))] bg-[rgb(var(--card))] p-3"
-              >
-                <input
-                  type="checkbox"
-                  className="mt-1 h-5 w-5"
-                  checked={!!selected[s.id]}
-                  onChange={(e) => setSelected((prev) => ({ ...prev, [s.id]: e.target.checked }))}
-                />
-                <div className="flex-1">
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="font-medium">{s.name}</div>
-                    <div className="text-sm text-[rgb(var(--muted))]">₹{s.price_rupees}</div>
-                  </div>
-                  <div className="text-sm text-[rgb(var(--muted))]">{s.duration_minutes} min</div>
-                </div>
-              </label>
-            ))}
-            {services.length === 0 && (
-              <div className="text-sm text-[rgb(var(--muted))]">no active services yet.</div>
-            )}
-          </div>
-
-          <div className="input mt-4">
-            <div className="flex items-center justify-between">
-              <span className="text-[rgb(var(--text))]">Total duration</span>
-              <span className="font-medium">{totals.totalDuration || 0} min</span>
-            </div>
-            <div className="mt-1 flex items-center justify-between">
-              <span className="text-[rgb(var(--muted))]">Total Price</span>
-              <span className="font-medium">₹{totals.totalPrice || 0}</span>
-            </div>
-          </div>
-        </section>
-
-        <section className="card mt-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-base font-semibold">Today’s availability</h2>
-            {nextAvailable ? (
-              <div className="text-sm text-[rgb(var(--muted))]">
-                Next: <span className="font-semibold">{formatTime(nextAvailable.start)}</span>
+          <button
+            type="button"
+            className="flex w-full items-center justify-between gap-3 text-left"
+            onClick={() => setOpenStep("services")}
+          >
+            <div>
+              <div className="text-base font-semibold">1) Services</div>
+              <div className="mt-0.5 text-xs text-[rgb(var(--muted))]">
+                {servicesComplete ? `${selectedServices.length} selected` : "Select at least 1 service"}
               </div>
-            ) : (
-              <div className="text-sm text-[rgb(var(--muted))]">No slots</div>
-            )}
-          </div>
-
-          {loading ? (
-            <div className="mt-3 text-sm text-[rgb(var(--muted))]">Loading…</div>
-          ) : (
-            <div className="mt-3 grid grid-cols-2 gap-2">
-              {slots.map((s) => {
-                const selectedThis = selectedSlot?.start.getTime() === s.start.getTime();
-                if (s.state === "BLOCKED") {
-                  return (
-                    <div
-                      key={s.start.toISOString()}
-                      className="rounded-xl border border-dashed border-[rgb(var(--border))] bg-[rgb(var(--card))] px-3 py-3 text-center text-sm text-[rgb(var(--placeholder))]"
-                    >
-                      {formatTime(s.start)}
-                    </div>
-                  );
-                }
-
-                if (s.state === "BOOKED") {
-                  return (
-                    <button
-                      key={s.start.toISOString()}
-                      type="button"
-                      onClick={() => joinWaitlist(s.start)}
-                      className="rounded-xl border border-[rgb(var(--border))] bg-[rgb(var(--bg))] px-3 py-3 text-left"
-                    >
-                      <div className="text-sm font-semibold">{formatTime(s.start)}</div>
-                      <div className="mt-0.5 text-xs font-medium text-[rgb(var(--muted))]">
-                        Booked · Join waitlist
-                      </div>
-                    </button>
-                  );
-                }
-
-                return (
-                  <button
-                    key={s.start.toISOString()}
-                    type="button"
-                    onClick={() => setSelectedSlot(s)}
-                    className={[
-                      "rounded-xl border px-3 py-3 text-left",
-                      selectedThis
-                        ? "border-[rgb(var(--primary))] bg-[rgb(var(--primary))] text-[rgb(var(--primary-foreground))]"
-                        : "border-[rgb(var(--border))] bg-[rgb(var(--card))]",
-                    ].join(" ")}
-                  >
-                    <div className="text-sm font-semibold">{formatTime(s.start)}</div>
-                    <div
-                      className={
-                        selectedThis
-                          ? "mt-0.5 text-xs text-[rgb(var(--primary-foreground))]/80"
-                          : "mt-0.5 text-xs text-[rgb(var(--muted))]"
-                      }
-                    >
-                      Available
-                    </div>
-                  </button>
-                );
-              })}
             </div>
-          )}
+            <div className="text-xs font-semibold text-[rgb(var(--muted))]">{openStep === "services" ? "OPEN" : servicesComplete ? "DONE" : "REQUIRED"}</div>
+          </button>
+
+          {openStep === "services" ? (
+            <div className="mt-3">
+              <div className="space-y-2">
+                {services.map((s) => (
+                  <label
+                    key={s.id}
+                    className="flex items-start gap-3 rounded-xl border border-[rgb(var(--border))] bg-[rgb(var(--card))] p-3"
+                  >
+                    <input
+                      type="checkbox"
+                      className="mt-1 h-5 w-5"
+                      checked={!!selected[s.id]}
+                      onChange={(e) => setSelected((prev) => ({ ...prev, [s.id]: e.target.checked }))}
+                    />
+                    <div className="flex-1">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="font-medium">{s.name}</div>
+                        <div className="text-sm text-[rgb(var(--muted))]">₹{s.price_rupees}</div>
+                      </div>
+                      <div className="text-sm text-[rgb(var(--muted))]">{s.duration_minutes} min</div>
+                    </div>
+                  </label>
+                ))}
+                {services.length === 0 && (
+                  <div className="text-sm text-[rgb(var(--muted))]">no active services yet.</div>
+                )}
+              </div>
+
+              <div className="input mt-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-[rgb(var(--text))]">Total duration</span>
+                  <span className="font-medium">{totals.totalDuration || 0} min</span>
+                </div>
+                <div className="mt-1 flex items-center justify-between">
+                  <span className="text-[rgb(var(--muted))]">Total Price</span>
+                  <span className="font-medium">₹{totals.totalPrice || 0}</span>
+                </div>
+              </div>
+            </div>
+          ) : null}
         </section>
 
+        {/* Step 2: Time slot */}
         <section className="card mt-4">
-          <h2 className="text-base font-semibold">Your details</h2>
-          <div className="mt-3 space-y-3">
-            <label className="block">
-              <div className="label">Name</div>
-              <input
-                className="input mt-1"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="Your name"
-              />
-            </label>
-            <label className="block">
-              <div className="label">Phone number</div>
-              <input
-                className="input mt-1"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                inputMode="tel"
-                placeholder="10-digit mobile"
-              />
-            </label>
-
-            {error ? (
-              <div className="alert-danger">{error}</div>
-            ) : null}
-
-            <button
-              type="button"
-              onClick={book}
-              className="btn-primary mt-1"
-            >
-              Book selected time
-            </button>
-
-            <div className="text-xs text-[rgb(var(--muted))]">
-              Please arrive on time and check in at the shop.
+          <button
+            type="button"
+            className="flex w-full items-center justify-between gap-3 text-left disabled:opacity-60"
+            onClick={() => setOpenStep("slots")}
+            disabled={!servicesComplete}
+          >
+            <div>
+              <div className="text-base font-semibold">2) Time slot</div>
+              <div className="mt-0.5 text-xs text-[rgb(var(--muted))]">
+                {!servicesComplete
+                  ? "Select services first"
+                  : selectedSlot
+                    ? `Selected: ${formatTime(selectedSlot.start)}`
+                    : "Pick a date & time"}
+              </div>
             </div>
-        </div>
+            <div className="text-xs font-semibold text-[rgb(var(--muted))]">
+              {openStep === "slots" ? "OPEN" : slotsComplete ? "DONE" : "REQUIRED"}
+            </div>
+          </button>
+
+          {openStep === "slots" && servicesComplete ? (
+            <div className="mt-3">
+              <div className="flex items-center justify-between">
+                <div className="text-sm text-[rgb(var(--muted))]">
+                  {nextAvailable ? (
+                    <>
+                      Next: <span className="font-semibold">{formatTime(nextAvailable.start)}</span>
+                    </>
+                  ) : (
+                    "No slots"
+                  )}
+                </div>
+              </div>
+
+              <div className="mt-3">
+                <label className="block">
+                  <div className="label">Date (next 7 days)</div>
+                  <input
+                    className="input mt-1"
+                    type="date"
+                    value={toDateInputValue(selectedDate)}
+                    min={toDateInputValue(startOfDayLocal(new Date()))}
+                    max={toDateInputValue(startOfDayLocal(addDaysLocal(new Date(), 7)))}
+                    onChange={(e) => {
+                      const d = fromDateInputValue(e.target.value);
+                      if (!d) return;
+                      // Clamp to today..today+7
+                      const minD = startOfDayLocal(new Date());
+                      const maxD = startOfDayLocal(addDaysLocal(new Date(), 7));
+                      const clamped = d.getTime() < minD.getTime() ? minD : d.getTime() > maxD.getTime() ? maxD : d;
+                      setSelectedDate(clamped);
+                    }}
+                  />
+                </label>
+              </div>
+
+              {loading ? (
+                <div className="mt-3 text-sm text-[rgb(var(--muted))]">Loading…</div>
+              ) : (
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  {slots.map((s) => {
+                    const selectedThis = selectedSlot?.start.getTime() === s.start.getTime();
+                    if (s.state === "BLOCKED") {
+                      return (
+                        <div
+                          key={s.start.toISOString()}
+                          className="rounded-xl border border-dashed border-[rgb(var(--border))] bg-[rgb(var(--card))] px-3 py-3 text-center text-sm text-[rgb(var(--placeholder))]"
+                        >
+                          {formatTime(s.start)}
+                        </div>
+                      );
+                    }
+
+                    if (s.state === "BOOKED") {
+                      return (
+                        <button
+                          key={s.start.toISOString()}
+                          type="button"
+                          onClick={() => joinWaitlist(s.start)}
+                          className="rounded-xl border border-[rgb(var(--border))] bg-[rgb(var(--bg))] px-3 py-3 text-left text-white"
+                        >
+                          <div className="text-sm font-semibold">{formatTime(s.start)}</div>
+                          <div className="mt-0.5 text-xs font-medium text-white">
+                            Booked · <span className="text-white">Join waitlist</span>
+                          </div>
+                        </button>
+                      );
+                    }
+
+                    return (
+                      <button
+                        key={s.start.toISOString()}
+                        type="button"
+                        onClick={() => setSelectedSlot(s)}
+                        className={[
+                          "rounded-xl border px-3 py-3 text-left",
+                          selectedThis
+                            ? "border-[rgb(var(--primary))] bg-[rgb(var(--primary))] text-[rgb(var(--primary-foreground))]"
+                            : "border-[rgb(var(--border))] bg-[rgb(var(--card))]",
+                        ].join(" ")}
+                      >
+                        <div className="text-sm font-semibold">{formatTime(s.start)}</div>
+                        <div
+                          className={
+                            selectedThis
+                              ? "mt-0.5 text-xs text-[rgb(var(--primary-foreground))]/80"
+                              : "mt-0.5 text-xs text-[rgb(var(--muted))]"
+                          }
+                        >
+                          Available
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          ) : null}
+        </section>
+
+        {/* Step 3: Details */}
+        <section className="card mt-4">
+          <button
+            type="button"
+            className="flex w-full items-center justify-between gap-3 text-left disabled:opacity-60"
+            onClick={() => setOpenStep("details")}
+            disabled={!servicesComplete || !slotsComplete}
+          >
+            <div>
+              <div className="text-base font-semibold">3) Your details</div>
+              <div className="mt-0.5 text-xs text-[rgb(var(--muted))]">
+                {!servicesComplete
+                  ? "Select services first"
+                  : !slotsComplete
+                    ? "Choose a time slot first"
+                    : "Enter your name & phone"}
+              </div>
+            </div>
+            <div className="text-xs font-semibold text-[rgb(var(--muted))]">
+              {openStep === "details" ? "OPEN" : name.trim() && phone.trim() ? "READY" : "REQUIRED"}
+            </div>
+          </button>
+
+          {openStep === "details" && servicesComplete && slotsComplete ? (
+            <div className="mt-3 space-y-3">
+              <label className="block">
+                <div className="label">Name</div>
+                <input
+                  className="input mt-1"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="Your name"
+                />
+              </label>
+              <label className="block">
+                <div className="label">Phone number</div>
+                <input
+                  className="input mt-1"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  inputMode="tel"
+                  placeholder="10-digit mobile"
+                />
+              </label>
+
+              <Toast message={error} onClose={() => setError(null)} />
+
+              <button type="button" onClick={book} className="btn-primary mt-1">
+                Book selected time
+              </button>
+
+              <div className="text-xs text-[rgb(var(--muted))]">
+                Please arrive on time and check in at the shop.
+              </div>
+            </div>
+          ) : null}
         </section>
 
         <footer className="mt-6 pb-6 text-center text-xs text-[rgb(var(--muted))]">

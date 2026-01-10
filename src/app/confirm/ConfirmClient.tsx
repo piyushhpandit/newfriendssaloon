@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { supabaseBrowser } from "@/lib/supabase/browser";
 import { SHOP } from "@/lib/shop";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { Toast } from "@/components/ui/Toast";
 
 type BookingDetails = {
   booking_id: string;
@@ -146,23 +147,21 @@ export function ConfirmClient(props: { bookingId: string | null; token: string |
 
         <section className="card mt-4">
           {loading ? <div className="text-sm text-[rgb(var(--muted))]">Loading…</div> : null}
-          {error ? (
-            <div className="alert-danger">{error}</div>
-          ) : null}
+          <Toast message={error} onClose={() => setError(null)} />
           {data ? (
             <div className="space-y-3">
               <div className="panel">
                 <div className="flex items-center justify-between">
-                  <span className="text-[rgb(var(--muted))]">Date & time</span>
-                  <span className="font-semibold">{formatDateTime(data.start_time)}</span>
+                  <span className="text-white">Date & time</span>
+                  <span className="font-semibold text-white">{formatDateTime(data.start_time)}</span>
                 </div>
                 <div className="mt-1 flex items-center justify-between">
-                  <span className="text-[rgb(var(--muted))]">Duration</span>
-                  <span className="font-semibold">{data.total_duration_minutes} min</span>
+                  <span className="text-white">Duration</span>
+                  <span className="font-semibold text-white">{data.total_duration_minutes} min</span>
                 </div>
                 <div className="mt-1 flex items-center justify-between">
-                  <span className="text-[rgb(var(--muted))]">Total</span>
-                  <span className="font-semibold">₹{data.total_price_rupees}</span>
+                  <span className="text-white">Total</span>
+                  <span className="font-semibold  text-white">₹{data.total_price_rupees}</span>
                 </div>
               </div>
 
@@ -191,7 +190,7 @@ export function ConfirmClient(props: { bookingId: string | null; token: string |
                 type="button"
                 onClick={checkIn}
                 disabled={checkingIn}
-                className="btn-primary"
+                className="btn-primary "
               >
                 {checkingIn ? "Checking in…" : "I’ve arrived"}
               </button>

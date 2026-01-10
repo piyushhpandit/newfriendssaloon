@@ -5,6 +5,7 @@ import { supabaseBrowser } from "@/lib/supabase/browser";
 import { BARBER_EMAIL } from "@/lib/supabase/env";
 import { SHOP } from "@/lib/shop";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { Toast } from "@/components/ui/Toast";
 
 export default function BarberLoginPage() {
   const supabase = useMemo(() => supabaseBrowser(), []);
@@ -32,7 +33,8 @@ export default function BarberLoginPage() {
     const { error: err } = await sb.auth.signInWithOtp({
       email: e,
       options: {
-        emailRedirectTo: `${window.location.origin}/barber`,
+        // Keep basePath compatibility (e.g. GitHub Pages served from /<repo>/)
+        emailRedirectTo: `${window.location.origin}${window.location.pathname.replace(/\/barber\/login\/?$/, "")}/barber`,
       },
     });
 
@@ -68,9 +70,7 @@ export default function BarberLoginPage() {
               />
             </label>
 
-            {error ? (
-              <div className="alert-danger">{error}</div>
-            ) : null}
+            <Toast message={error} onClose={() => setError(null)} />
 
             {sent ? (
               <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
