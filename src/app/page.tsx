@@ -252,7 +252,7 @@ export default function BookingPage() {
               <span className="font-medium">{totals.totalDuration || 0} min</span>
             </div>
             <div className="mt-1 flex items-center justify-between">
-              <span className="text-[rgb(var(--muted))]">Total price</span>
+              <span className="text-[rgb(var(--muted))]">Total Price</span>
               <span className="font-medium">₹{totals.totalPrice || 0}</span>
             </div>
           </div>
