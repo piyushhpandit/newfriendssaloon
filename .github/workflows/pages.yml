@@ -15,6 +15,9 @@ concurrency:
 jobs:
   build-and-publish:
     runs-on: ubuntu-latest
+    # If you stored the secrets under "Environments → github-pages", this makes them available.
+    # Repository-level secrets also continue to work.
+    environment: github-pages
     steps:
       - name: Checkout
         uses: actions/checkout@v4
