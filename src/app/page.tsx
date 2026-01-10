@@ -242,7 +242,7 @@ export default function BookingPage() {
               </label>
             ))}
             {services.length === 0 && (
-              <div className="text-sm text-[rgb(var(--muted))]">No active services yet.</div>
+              <div className="text-sm text-[rgb(var(--muted))]">no active services yet.</div>
             )}
           </div>
 
