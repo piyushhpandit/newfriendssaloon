@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { supabaseBrowser } from "@/lib/supabase/browser";
 import { useRouter } from "next/navigation";
 import { useSearchParams } from "next/navigation";
@@ -161,7 +161,7 @@ function TabButton(props: {
   );
 }
 
-export default function BarberDashboardPage() {
+function BarberDashboardInner() {
   const supabase = useMemo(() => supabaseBrowser(), []);
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -1249,6 +1249,25 @@ export default function BarberDashboardPage() {
         </section>
       </div>
     </div>
+  );
+}
+
+export default function BarberDashboardPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen px-4 py-5">
+          <div className="mx-auto w-full max-w-lg">
+            <div className="card">
+              <div className="text-sm font-medium text-[rgb(var(--muted))]">Barber Dashboard</div>
+              <div className="mt-2 text-sm text-[rgb(var(--muted))]">Loading…</div>
+            </div>
+          </div>
+        </div>
+      }
+    >
+      <BarberDashboardInner />
+    </Suspense>
   );
 }
 

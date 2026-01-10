@@ -1,7 +1,14 @@
 import type { NextConfig } from "next";
 
+function normalizeBasePath(p: string | undefined | null): string {
+  const v = (p ?? "").trim();
+  if (!v || v === "/") return "";
+  return v.startsWith("/") ? v.replace(/\/$/, "") : `/${v.replace(/\/$/, "")}`;
+}
+
 const repo = process.env.GITHUB_REPOSITORY?.split("/")?.[1] ?? "";
-const isGitHubPages = process.env.GITHUB_ACTIONS === "true" && repo.length > 0;
+// Prefer explicit env override (useful for local builds), else infer from GitHub repo name.
+const basePath = normalizeBasePath(process.env.NEXT_PUBLIC_BASE_PATH ?? process.env.BASE_PATH ?? (repo ? `/${repo}` : ""));
 
 const nextConfig: NextConfig = {
   reactCompiler: true,
@@ -11,8 +18,8 @@ const nextConfig: NextConfig = {
   images: { unoptimized: true },
 
   // When deploying to GitHub Pages, the site is served from /<repo>/.
-  basePath: isGitHubPages ? `/${repo}` : undefined,
-  assetPrefix: isGitHubPages ? `/${repo}/` : undefined,
+  basePath: basePath || undefined,
+  assetPrefix: basePath ? `${basePath}/` : undefined,
 };
 
 export default nextConfig;
