@@ -1,13 +1,16 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { BARBER_EMAIL } from "@/lib/supabase/env";
 import { SHOP } from "@/lib/shop";
 import { Toast } from "@/components/ui/Toast";
 import { useRouter } from "next/navigation";
+import { supabaseBrowser } from "@/lib/supabase/browser";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 export default function BarberLoginPage() {
   const router = useRouter();
+  const supabase = useMemo(() => supabaseBrowser(), []);
   const [email, setEmail] = useState(BARBER_EMAIL);
   const [sent, setSent] = useState(false);
   const [code, setCode] = useState("");
@@ -51,36 +54,33 @@ export default function BarberLoginPage() {
   async function verifyCode() {
     setError(null);
     setLoading(true);
+    const sb = supabase as SupabaseClient | null;
+    if (!sb) {
+      setError("App is not ready. Please refresh.");
+      setLoading(false);
+      return;
+    }
     const e = email.trim();
-    const t = code.trim().replace(/\D/g, "").slice(0, 4);
+    const t = code.trim().replace(/\D/g, "").slice(0, 6);
     if (!e) {
       setError("Enter your email.");
       setLoading(false);
       return;
     }
-    if (t.length !== 4) {
-      setError("Enter the 4-digit code from your email.");
+    if (t.length !== 6) {
+      setError("Enter the 6-digit code from your email.");
       setLoading(false);
       return;
     }
-    const res = await fetch("/api/barber/verify-otp", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ email: e, code: t }),
-    }).catch(() => null);
-    if (!res) {
-      setError("Network error. Please try again.");
-      setLoading(false);
-      return;
-    }
-    const payload = (await res.json().catch(() => null)) as { ok?: boolean; error?: string; actionLink?: string } | null;
-    if (!res.ok || !payload?.ok || !payload?.actionLink) {
-      setError(payload?.error || "Failed to verify code.");
+
+    const { error: err } = await sb.auth.verifyOtp({ email: e, token: t, type: "email" });
+    if (err) {
+      setError(err.message);
       setLoading(false);
       return;
     }
     setLoading(false);
-    window.location.href = payload.actionLink;
+    router.push("/barber");
   }
 
   return (
@@ -111,10 +111,10 @@ export default function BarberLoginPage() {
                 <input
                   className="input mt-1"
                   value={code}
-                  onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 4))}
+                  onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
                   inputMode="numeric"
-                  placeholder="4-digit code"
-                  maxLength={4}
+                  placeholder="6-digit code"
+                  maxLength={6}
                 />
               </label>
             ) : null}
