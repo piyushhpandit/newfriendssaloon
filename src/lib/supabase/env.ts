@@ -1,4 +1,9 @@
-export const BARBER_EMAIL = process.env.NEXT_PUBLIC_BARBER_EMAIL ?? "";
+const rawBarberEmails = process.env.NEXT_PUBLIC_BARBER_EMAILS ?? "";
+export const BARBER_EMAILS = rawBarberEmails
+  .split(",")
+  .map((email) => email.trim().toLowerCase())
+  .filter(Boolean);
+export const BARBER_EMAIL = BARBER_EMAILS[0] ?? "";
 
 export function tryGetSupabaseEnv(): { url: string; anonKey: string } | null {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;

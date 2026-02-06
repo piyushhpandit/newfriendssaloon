@@ -27,12 +27,6 @@ export default function BarberLoginPage() {
   async function sendCode() {
     setError(null);
     setLoading(true);
-    const sb = supabase as SupabaseClient | null;
-    if (!sb) {
-      setError("App is not ready. Please refresh.");
-      setLoading(false);
-      return;
-    }
     const e = email.trim();
     if (!e) {
       setError("Enter your email.");
@@ -40,14 +34,22 @@ export default function BarberLoginPage() {
       return;
     }
 
-    // Email OTP (code) flow. This sends a one-time code to the email address.
-    const { error: err } = await sb.auth.signInWithOtp({
-      email: e,
-      options: { shouldCreateUser: false, emailRedirectTo },
-    });
+    // Custom email delivery via Nodemailer. Supabase generates the OTP, but we send it ourselves.
+    const res = await fetch("/api/barber/send-otp", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email: e }),
+    }).catch(() => null);
 
-    if (err) {
-      setError(err.message);
+    if (!res) {
+      setError("Network error. Please try again.");
+      setLoading(false);
+      return;
+    }
+
+    const payload = (await res.json().catch(() => null)) as { ok?: boolean; error?: string } | null;
+    if (!res.ok || !payload?.ok) {
+      setError(payload?.error || "Failed to send code.");
       setLoading(false);
       return;
     }

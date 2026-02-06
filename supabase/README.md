@@ -17,8 +17,8 @@ Create `.env.local` in the project root:
 NEXT_PUBLIC_SUPABASE_URL="https://YOUR_PROJECT.supabase.co"
 NEXT_PUBLIC_SUPABASE_ANON_KEY="YOUR_ANON_PUBLIC_KEY"
 
-# Used only for barber magic-link login UI convenience
-NEXT_PUBLIC_BARBER_EMAIL="you@yourdomain.com"
+# Comma-separated allowlist for barber login
+NEXT_PUBLIC_BARBER_EMAILS="barber1@yourdomain.com,barber2@yourdomain.com"
 ```
 
 ### Notes
