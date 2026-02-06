@@ -26,3 +26,4 @@ NEXT_PUBLIC_BARBER_EMAIL="you@yourdomain.com"
 - Barber uses Supabase Auth magic link. Any authenticated user is treated as the barber (single-user shop).
 
 
+
