@@ -91,6 +91,11 @@ export function WaitlistClient(props: { waitlistId: string | null; token: string
     }
     const row = (res.data?.[0] ?? null) as { booking_id: string } | null;
     if (row?.booking_id) {
+      void fetch("/api/barber/notify", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ type: "booking_confirmed", bookingId: row.booking_id }),
+      }).catch(() => null);
       router.push(`/confirm?booking=${row.booking_id}&token=${token}`);
       return;
     }

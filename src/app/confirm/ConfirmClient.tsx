@@ -126,6 +126,11 @@ export function ConfirmClient(props: { bookingId: string | null; token: string |
       setCheckingIn(false);
       return;
     }
+    void fetch("/api/barber/notify", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ type: "checkin", bookingId }),
+    }).catch(() => null);
     // Reload details (status should change)
     const again = await sb.rpc("get_booking_for_customer", {
       p_booking_id: bookingId,

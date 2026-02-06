@@ -328,6 +328,15 @@ function BarberDashboardInner() {
       return;
     }
 
+    if (status === "CANCELLED" || status === "CHECKED_IN") {
+      const type = status === "CHECKED_IN" ? "checkin" : "cancelled";
+      void fetch("/api/barber/notify", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ type, bookingId: id }),
+      }).catch(() => null);
+    }
+
     // If a future booking is cancelled/no-show, try to promote the waitlist automatically for that slot.
     // (The RPC is idempotent and will no-op if slot isn't free or nobody is waiting.)
     if ((status === "CANCELLED" || status === "NO_SHOW") && res.data?.start_time) {

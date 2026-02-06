@@ -1,4 +1,5 @@
 import nodemailer from "nodemailer";
+import { BARBER_EMAILS } from "@/lib/supabase/env";
 
 type SmtpConfig = {
   host: string;
@@ -74,6 +75,21 @@ export async function sendOtpEmail(params: { to: string; otp: string; appName?: 
         </p>
       </div>
     `,
+  });
+}
+
+export async function sendBarberNotificationEmail(params: { subject: string; text: string; html: string; to?: string[] }) {
+  const cfg = getSmtpConfig();
+  const transporter = getMailerTransporter();
+  const to = params.to && params.to.length > 0 ? params.to : BARBER_EMAILS;
+  if (!to.length) throw new Error("Missing barber recipient emails");
+
+  await transporter.sendMail({
+    from: `"${cfg.fromName}" <${cfg.fromEmail}>`,
+    to,
+    subject: params.subject,
+    text: params.text,
+    html: params.html,
   });
 }
 

@@ -234,6 +234,12 @@ export default function BookingPage() {
       // ignore storage failures (private mode, quota, etc.)
     }
 
+    void fetch("/api/barber/notify", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ type: "booking_confirmed", bookingId: row.booking_id }),
+    }).catch(() => null);
+
     router.push(`/confirm?booking=${row.booking_id}&token=${row.customer_token}`);
   }
 

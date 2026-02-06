@@ -181,6 +181,15 @@ create table if not exists public.booking_services (
 
 create index if not exists booking_services_booking_id_idx on public.booking_services(booking_id);
 
+create table if not exists public.barber_email_otps (
+  email text primary key,
+  code_hash text not null,
+  expires_at timestamptz not null,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists barber_email_otps_expires_idx on public.barber_email_otps(expires_at);
+
 create table if not exists public.waitlist (
   id uuid primary key default gen_random_uuid(),
   slot_start_time timestamptz not null,
@@ -293,6 +302,7 @@ alter table public.availability_rules enable row level security;
 alter table public.blocked_slots enable row level security;
 alter table public.bookings enable row level security;
 alter table public.booking_services enable row level security;
+alter table public.barber_email_otps enable row level security;
 alter table public.waitlist enable row level security;
 
 -- Services: public read active; barber CRUD
