@@ -50,11 +50,10 @@ export async function POST(req: Request) {
     if (error) return jsonError(error.message, 500);
 
     const props = (data as unknown as { properties?: Record<string, unknown> } | null)?.properties ?? null;
-    const actionLink =
-      (typeof (data as { action_link?: string } | null)?.action_link === "string"
-        ? (data as { action_link: string }).action_link
-        : null) ||
-      (typeof props?.action_link === "string" ? (props.action_link as string) : "");
+    // `generateLink()` returns link/otp details under `data.properties`.
+    // Do not rely on a top-level `action_link` field.
+    const maybeActionLink = props?.action_link;
+    const actionLink = typeof maybeActionLink === "string" ? maybeActionLink : "";
     if (!actionLink) return jsonError("Could not create login link.", 500);
 
     return NextResponse.json({ ok: true, actionLink });
