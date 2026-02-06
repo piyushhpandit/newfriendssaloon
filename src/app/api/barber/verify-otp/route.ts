@@ -40,12 +40,15 @@ export async function POST(req: Request) {
 
     await admin.from("barber_email_otps").delete().eq("email", email);
 
-    const site = process.env.NEXT_PUBLIC_SITE_URL?.trim() || "";
-    const redirectTo = site ? `${site.replace(/\/+$/, "")}/barber` : undefined;
+    // Ensure the magic-link redirect never falls back to localhost in production.
+    // Prefer explicit env, otherwise derive from the current request origin (Vercel domain).
+    const reqOrigin = new URL(req.url).origin;
+    const site = process.env.NEXT_PUBLIC_SITE_URL?.trim() || reqOrigin;
+    const redirectTo = `${site.replace(/\/+$/, "")}/barber`;
     const { data, error } = await admin.auth.admin.generateLink({
       type: "magiclink",
       email,
-      options: redirectTo ? { redirectTo } : undefined,
+      options: { redirectTo },
     });
     if (error) return jsonError(error.message, 500);
 
