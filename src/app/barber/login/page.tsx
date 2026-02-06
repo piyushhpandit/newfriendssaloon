@@ -61,19 +61,47 @@ export default function BarberLoginPage() {
       return;
     }
     const e = email.trim();
-    const t = code.trim().replace(/\D/g, "").slice(0, 6);
+    const t = code.trim().replace(/\D/g, "").slice(0, 4);
     if (!e) {
       setError("Enter your email.");
       setLoading(false);
       return;
     }
-    if (t.length !== 6) {
-      setError("Enter the 6-digit code from your email.");
+    if (t.length !== 4) {
+      setError("Enter the 4-digit code from your email.");
+      setLoading(false);
+      return;
+    }
+    const res = await fetch("/api/barber/verify-otp", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email: e, code: t }),
+    }).catch(() => null);
+    if (!res) {
+      setError("Network error. Please try again.");
+      setLoading(false);
+      return;
+    }
+    const payload = (await res.json().catch(() => null)) as
+      | { ok?: boolean; error?: string; token_hash?: string; type?: string }
+      | null;
+    if (!res.ok || !payload?.ok || !payload.token_hash) {
+      setError(payload?.error || "Failed to verify code.");
       setLoading(false);
       return;
     }
 
-    const { error: err } = await sb.auth.verifyOtp({ email: e, token: t, type: "email" });
+    const type =
+      payload.type === "magiclink" ||
+      payload.type === "signup" ||
+      payload.type === "invite" ||
+      payload.type === "recovery" ||
+      payload.type === "email_change" ||
+      payload.type === "email"
+        ? payload.type
+        : "magiclink";
+
+    const { error: err } = await sb.auth.verifyOtp({ token_hash: payload.token_hash, type });
     if (err) {
       setError(err.message);
       setLoading(false);
@@ -111,10 +139,10 @@ export default function BarberLoginPage() {
                 <input
                   className="input mt-1"
                   value={code}
-                  onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                  onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 4))}
                   inputMode="numeric"
-                  placeholder="6-digit code"
-                  maxLength={6}
+                  placeholder="4-digit code"
+                  maxLength={4}
                 />
               </label>
             ) : null}

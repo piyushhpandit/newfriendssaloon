@@ -52,14 +52,13 @@ export async function POST(req: Request) {
     });
     if (error) return jsonError(error.message, 500);
 
+    // Use token-hash verification to establish a Supabase session WITHOUT browser redirects.
     const props = (data as unknown as { properties?: Record<string, unknown> } | null)?.properties ?? null;
-    // `generateLink()` returns link/otp details under `data.properties`.
-    // Do not rely on a top-level `action_link` field.
-    const maybeActionLink = props?.action_link;
-    const actionLink = typeof maybeActionLink === "string" ? maybeActionLink : "";
-    if (!actionLink) return jsonError("Could not create login link.", 500);
+    const token_hash = typeof props?.hashed_token === "string" ? (props.hashed_token as string) : "";
+    const type = typeof props?.verification_type === "string" ? (props.verification_type as string) : "";
+    if (!token_hash) return jsonError("Could not create login token.", 500);
 
-    return NextResponse.json({ ok: true, actionLink });
+    return NextResponse.json({ ok: true, token_hash, type: type || "magiclink" });
   } catch (e) {
     const message = e instanceof Error ? e.message : "Unknown error";
     return jsonError(message, 500);
