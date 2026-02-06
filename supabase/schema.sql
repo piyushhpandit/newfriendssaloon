@@ -58,14 +58,35 @@ begin
 end;
 $$;
 
--- Any authenticated user = the barber (single-user shop)
+-- Barber access allowlist (only these emails can use barber dashboard).
+-- Manage entries from Supabase SQL editor, e.g.:
+--   insert into public.barber_allowlist(email) values ('a@b.com'), ('c@d.com') on conflict do nothing;
+create table if not exists public.barber_allowlist (
+  email text primary key,
+  created_at timestamptz not null default now()
+);
+
+-- Lock down direct access from the public API (manage via SQL editor / service role).
+revoke all on table public.barber_allowlist from public;
+revoke all on table public.barber_allowlist from anon, authenticated;
+
 create or replace function public.is_barber()
 returns boolean
 language sql
 stable
+security definer
+set search_path = public
 as $$
-  select auth.role() = 'authenticated';
+  select auth.role() = 'authenticated'
+     and exists (
+       select 1
+       from public.barber_allowlist a
+       where lower(a.email) = lower(auth.jwt() ->> 'email')
+     );
 $$;
+
+revoke all on function public.is_barber() from public;
+grant execute on function public.is_barber() to anon, authenticated;
 
 -- Tables
 create table if not exists public.services (

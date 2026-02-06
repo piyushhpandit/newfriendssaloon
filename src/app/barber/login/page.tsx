@@ -17,6 +17,13 @@ export default function BarberLoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
+  const emailRedirectTo = useMemo(() => {
+    const configured = process.env.NEXT_PUBLIC_SITE_URL?.trim();
+    if (configured) return `${configured.replace(/\/+$/, "")}/barber`;
+    if (typeof window !== "undefined") return `${window.location.origin}/barber`;
+    return undefined;
+  }, []);
+
   async function sendCode() {
     setError(null);
     setLoading(true);
@@ -34,7 +41,10 @@ export default function BarberLoginPage() {
     }
 
     // Email OTP (code) flow. This sends a one-time code to the email address.
-    const { error: err } = await sb.auth.signInWithOtp({ email: e, options: { shouldCreateUser: false } });
+    const { error: err } = await sb.auth.signInWithOtp({
+      email: e,
+      options: { shouldCreateUser: false, emailRedirectTo },
+    });
 
     if (err) {
       setError(err.message);

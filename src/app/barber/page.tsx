@@ -220,6 +220,17 @@ function BarberDashboardInner() {
     if (!sb) return null;
     const { data: sessionData } = await sb.auth.getSession();
     if (!sessionData.session) return null;
+    // Server-enforced allowlist (see `public.is_barber()` + RLS).
+    const { data: ok, error: okErr } = await sb.rpc("is_barber");
+    if (okErr) {
+      setError(okErr.message);
+      return null;
+    }
+    if (!ok) {
+      setError("Access denied. This account is not allowed to use the barber dashboard.");
+      await sb.auth.signOut();
+      return null;
+    }
     return sb;
   }
 
